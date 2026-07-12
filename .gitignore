@@ -1,6 +1,9 @@
 # Dependencias
 node_modules/
 
+# Cache de wrangler (Cloudflare)
+.wrangler/
+
 # Perfil aislado del navegador para capturas (no versionar)
 _edge_profile/
 

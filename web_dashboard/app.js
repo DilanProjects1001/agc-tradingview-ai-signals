@@ -150,6 +150,78 @@ function actualizarReloj() {
 }
 
 // --------------------------------------------------------------------------
+//  TICKER DE PRECIOS (Binance publica; con respaldo demo sintetico).
+//  Si la API de Binance responde, muestra el precio real; si falla (red,
+//  bloqueo geografico, CORS...), genera datos demo para no dejar la UI vacia.
+// --------------------------------------------------------------------------
+// Precios demo de referencia (se usan si Binance no responde).
+const preciosDemo = { BTCUSDT: 64250.35, ETHUSDT: 3420.18, SOLUSDT: 148.72 };
+// Guardamos el ultimo precio de cada par para calcular la variacion.
+const ultimoPrecio = {};
+
+function formatearPrecio(n) {
+  return "$" + Number(n).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Pinta un par en el ticker y calcula si subio o bajo respecto al valor previo.
+function pintarTicker(symbol, precio, esDemo) {
+  const item = document.querySelector('.ticker-item[data-symbol="' + symbol + '"]');
+  if (!item) return;
+  const elPrecio = item.querySelector(".ticker-precio");
+  const elVar = item.querySelector(".ticker-var");
+
+  const previo = ultimoPrecio[symbol];
+  elPrecio.textContent = formatearPrecio(precio);
+
+  if (typeof previo === "number" && previo !== precio) {
+    const sube = precio > previo;
+    const dif = ((precio - previo) / previo) * 100;
+    elVar.textContent = (sube ? "▲ " : "▼ ") + Math.abs(dif).toFixed(2) + "%";
+    elVar.className = "ticker-var " + (sube ? "sube" : "baja");
+  }
+  ultimoPrecio[symbol] = precio;
+
+  const fuente = document.getElementById("ticker-fuente");
+  if (fuente) {
+    fuente.textContent = esDemo ? "Datos demo (Binance no disponible)" : "En vivo · Binance";
+    fuente.className = "ticker-fuente" + (esDemo ? " demo" : "");
+  }
+}
+
+// Consulta un precio real en Binance. Devuelve el numero o null si falla.
+async function precioBinance(symbol) {
+  try {
+    const resp = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=" + symbol);
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const p = parseFloat(data.price);
+    return isFinite(p) ? p : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Genera un precio demo con una pequeña variacion aleatoria (+/- 0.4%).
+function precioDemoSintetico(symbol) {
+  const base = ultimoPrecio[symbol] || preciosDemo[symbol] || 100;
+  const variacion = (Math.random() - 0.5) * 0.008; // +/-0.4%
+  return base * (1 + variacion);
+}
+
+// Refresca los tres pares. Intenta Binance; si algun par falla, usa demo.
+async function refrescarTicker() {
+  const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
+  for (const sym of symbols) {
+    const real = await precioBinance(sym);
+    if (real !== null) {
+      pintarTicker(sym, real, false);
+    } else {
+      pintarTicker(sym, precioDemoSintetico(sym), true);
+    }
+  }
+}
+
+// --------------------------------------------------------------------------
 //  Arranque del panel.
 // --------------------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", async function () {
@@ -157,6 +229,10 @@ document.addEventListener("DOMContentLoaded", async function () {
   pintarSenales(senalesBase);
   actualizarReloj();
   setInterval(actualizarReloj, 1000);
+
+  // 1b) Ticker de precios: primer refresco + actualizacion cada 10 s.
+  refrescarTicker();
+  setInterval(refrescarTicker, 10000);
 
   // 2) Completar explicacion AI + confianza de cada señal.
   const enriquecidas = await Promise.all(

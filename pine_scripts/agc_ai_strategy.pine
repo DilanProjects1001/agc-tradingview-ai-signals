@@ -1,0 +1,182 @@
+//@version=5
+// ============================================================================
+//  AGC AI Strategy  —  Estrategia con backtest (educativa)
+// ============================================================================
+//  Este script es solo con fines educativos y de portafolio. No constituye
+//  consejo financiero ni ejecuta operaciones reales.
+//
+//  Es la version ESTRATEGIA del indicador "agc_ai_signals.pine": usa la MISMA
+//  logica (cruce de EMAs 9/21 + RSI 14 + divergencias RSI-precio) pero ademas
+//  ABRE y CIERRA operaciones simuladas para poder ver un backtest historico
+//  con el "Strategy Tester" de TradingView.
+//
+//  --------------------------------------------------------------------------
+//  COMO USARLO EN TRADINGVIEW
+//  --------------------------------------------------------------------------
+//   1) Abre tradingview.com y cualquier grafico (ej. BTCUSDT).
+//   2) Abre el "Pine Editor" (abajo de la pantalla).
+//   3) Borra el ejemplo y PEGA todo este archivo.
+//   4) Pulsa "Add to chart" / "Añadir al grafico".
+//   5) Abre la pestaña "Strategy Tester" para ver resultados del backtest
+//      (ganancia neta, % de aciertos, drawdown, lista de operaciones...).
+//   6) Ajusta parametros con el engranaje del indicador (EMAs, RSI, gestion
+//      de riesgo: stop loss y take profit en %).
+//
+//  RECORDATORIO: el backtest es una simulacion sobre datos historicos. NO
+//  garantiza resultados futuros ni ejecuta ordenes reales en ningun mercado.
+// ============================================================================
+
+// "strategy(...)" convierte el script en estrategia (con backtest).
+// - initial_capital: capital inicial simulado.
+// - default_qty_type / value: cada entrada usa un % del capital.
+// - commission_value: comision simulada por operacion (0.04% = tipico futuros).
+strategy(title            = "AGC AI Strategy",
+         shorttitle       = "AGC AI Strat",
+         overlay          = true,
+         initial_capital  = 1000,
+         default_qty_type = strategy.percent_of_equity,
+         default_qty_value= 10,
+         commission_type  = strategy.commission.percent,
+         commission_value = 0.04,
+         max_labels_count = 500)
+
+// ----------------------------------------------------------------------------
+//  ENTRADAS CONFIGURABLES
+// ----------------------------------------------------------------------------
+// --- Medias moviles ---
+grupoEma          = "Medias moviles (EMA)"
+longitudEmaRapida = input.int(9,  "EMA rapida", minval=1, group=grupoEma)
+longitudEmaLenta  = input.int(21, "EMA lenta",  minval=1, group=grupoEma)
+
+// --- RSI ---
+grupoRsi         = "RSI (Fuerza relativa)"
+longitudRsi      = input.int(14, "Periodo RSI",       minval=1,  group=grupoRsi)
+nivelSobreventa  = input.int(30, "Nivel sobreventa",  minval=1, maxval=50, group=grupoRsi)
+nivelSobrecompra = input.int(70, "Nivel sobrecompra", minval=50, maxval=99, group=grupoRsi)
+
+// --- Divergencias ---
+grupoDiv             = "Divergencias RSI-Precio"
+detectarDivergencias = input.bool(true, "Usar divergencias", group=grupoDiv)
+pivoteIzq            = input.int(5, "Barras izquierda del pivote", minval=1, group=grupoDiv)
+pivoteDer            = input.int(5, "Barras derecha del pivote",   minval=1, group=grupoDiv)
+rangoMaxDiv          = input.int(60, "Rango maximo entre pivotes (barras)", minval=5, group=grupoDiv)
+
+// --- Gestion de riesgo (opcional) ---
+grupoRiesgo   = "Gestion de riesgo"
+usarSalidas   = input.bool(true, "Usar Stop Loss / Take Profit", group=grupoRiesgo)
+stopLossPct   = input.float(2.0, "Stop Loss (%)",   minval=0.1, step=0.1, group=grupoRiesgo)
+takeProfitPct = input.float(4.0, "Take Profit (%)", minval=0.1, step=0.1, group=grupoRiesgo)
+
+// --- Direccion permitida ---
+grupoDir      = "Operativa"
+permitirLargos = input.bool(true, "Permitir operaciones en LARGO (compra)",  group=grupoDir)
+permitirCortos = input.bool(true, "Permitir operaciones en CORTO (venta)",   group=grupoDir)
+
+// ----------------------------------------------------------------------------
+//  CALCULOS PRINCIPALES (misma logica que el indicador)
+// ----------------------------------------------------------------------------
+emaRapida = ta.ema(close, longitudEmaRapida)
+emaLenta  = ta.ema(close, longitudEmaLenta)
+rsi       = ta.rsi(close, longitudRsi)
+
+// 1) Cruces de EMA.
+cruceAlcista = ta.crossover(emaRapida, emaLenta)
+cruceBajista = ta.crossunder(emaRapida, emaLenta)
+
+// 2) Salidas de zonas RSI.
+rsiSalidaSobreventa  = ta.crossover(rsi, nivelSobreventa)
+rsiSalidaSobrecompra = ta.crossunder(rsi, nivelSobrecompra)
+
+// 3) Divergencias RSI-precio (misma tecnica de pivotes).
+pivoteBajoRsi = ta.pivotlow(rsi, pivoteIzq, pivoteDer)
+pivoteAltoRsi = ta.pivothigh(rsi, pivoteIzq, pivoteDer)
+
+var float rsiUltimoBajo   = na
+var int   barraUltimoBajo = na
+var float rsiUltimoAlto   = na
+var int   barraUltimoAlto = na
+
+divergenciaAlcista = false
+divergenciaBajista = false
+
+if detectarDivergencias
+    // Divergencia alcista: precio hace minimo mas bajo, RSI minimo mas alto.
+    if not na(pivoteBajoRsi)
+        precioEnPivote = low[pivoteDer]
+        if not na(rsiUltimoBajo) and (bar_index - barraUltimoBajo) <= rangoMaxDiv
+            if precioEnPivote < low[pivoteDer + (bar_index - barraUltimoBajo)] and pivoteBajoRsi > rsiUltimoBajo
+                divergenciaAlcista := true
+        rsiUltimoBajo   := pivoteBajoRsi
+        barraUltimoBajo := bar_index - pivoteDer
+
+    // Divergencia bajista: precio hace maximo mas alto, RSI maximo mas bajo.
+    if not na(pivoteAltoRsi)
+        precioEnPivote = high[pivoteDer]
+        if not na(rsiUltimoAlto) and (bar_index - barraUltimoAlto) <= rangoMaxDiv
+            if precioEnPivote > high[pivoteDer + (bar_index - barraUltimoAlto)] and pivoteAltoRsi < rsiUltimoAlto
+                divergenciaBajista := true
+        rsiUltimoAlto   := pivoteAltoRsi
+        barraUltimoAlto := bar_index - pivoteDer
+
+// ----------------------------------------------------------------------------
+//  SEÑALES COMBINADAS (entrada / salida)
+// ----------------------------------------------------------------------------
+// Señal de compra (largo): cualquier condicion alcista.
+señalAlcista = cruceAlcista or rsiSalidaSobreventa or divergenciaAlcista
+// Señal de venta (corto): cualquier condicion bajista.
+señalBajista = cruceBajista or rsiSalidaSobrecompra or divergenciaBajista
+
+// ----------------------------------------------------------------------------
+//  EJECUCION DE OPERACIONES SIMULADAS (BACKTEST)
+// ----------------------------------------------------------------------------
+// Entrada en LARGO cuando hay señal alcista (cierra cualquier corto abierto).
+if señalAlcista and permitirLargos
+    strategy.entry("Largo", strategy.long, comment="Compra")
+
+// Entrada en CORTO cuando hay señal bajista (cierra cualquier largo abierto).
+if señalBajista and permitirCortos
+    strategy.entry("Corto", strategy.short, comment="Venta")
+
+// Si solo se permiten largos, la señal bajista sirve para CERRAR el largo.
+if señalBajista and not permitirCortos
+    strategy.close("Largo", comment="Cierre por señal bajista")
+// Si solo se permiten cortos, la señal alcista sirve para CERRAR el corto.
+if señalAlcista and not permitirLargos
+    strategy.close("Corto", comment="Cierre por señal alcista")
+
+// Stop Loss / Take Profit basados en el precio de entrada promedio.
+if usarSalidas
+    // Para largos.
+    if strategy.position_size > 0
+        precioEntrada = strategy.position_avg_price
+        strategy.exit("SL/TP Largo", from_entry="Largo",
+             stop  = precioEntrada * (1 - stopLossPct / 100.0),
+             limit = precioEntrada * (1 + takeProfitPct / 100.0))
+    // Para cortos.
+    if strategy.position_size < 0
+        precioEntrada = strategy.position_avg_price
+        strategy.exit("SL/TP Corto", from_entry="Corto",
+             stop  = precioEntrada * (1 + stopLossPct / 100.0),
+             limit = precioEntrada * (1 - takeProfitPct / 100.0))
+
+// ----------------------------------------------------------------------------
+//  DIBUJO EN EL GRAFICO (ayuda visual)
+// ----------------------------------------------------------------------------
+plot(emaRapida, "EMA rapida", color=color.new(color.aqua, 0),   linewidth=2)
+plot(emaLenta,  "EMA lenta",  color=color.new(color.orange, 0), linewidth=2)
+
+plotshape(señalAlcista, title="Señal compra", style=shape.triangleup,   location=location.belowbar, color=color.new(color.green, 0), size=size.tiny)
+plotshape(señalBajista, title="Señal venta",  style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0),   size=size.tiny)
+
+if divergenciaAlcista
+    label.new(bar_index[pivoteDer], low[pivoteDer],  "Div. alcista", style=label.style_label_up,   color=color.new(color.green, 20), textcolor=color.white, size=size.small)
+if divergenciaBajista
+    label.new(bar_index[pivoteDer], high[pivoteDer], "Div. bajista", style=label.style_label_down, color=color.new(color.red, 20),   textcolor=color.white, size=size.small)
+
+// Fondo tenue segun zona de RSI.
+bgcolor(rsi < nivelSobreventa  ? color.new(color.green, 90) : na, title="Fondo sobreventa")
+bgcolor(rsi > nivelSobrecompra ? color.new(color.red, 90)   : na, title="Fondo sobrecompra")
+
+// ============================================================================
+//  Fin de la estrategia. Recuerda: simulacion educativa, no consejo financiero.
+// ============================================================================

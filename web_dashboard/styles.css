@@ -57,6 +57,35 @@ body {
 }
 .encabezado .estado b { color: var(--verde); }
 
+/* ---- Ticker de precios ---- */
+.ticker {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  border: 1px solid var(--borde);
+  background: var(--fondo-panel);
+  border-radius: 10px;
+  padding: 12px 18px;
+  margin-bottom: 18px;
+}
+.ticker-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 14px;
+  background: var(--fondo-panel2);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+}
+.ticker-par { color: var(--texto-tenue); font-size: 12px; letter-spacing: .5px; }
+.ticker-precio { font-size: 18px; font-weight: bold; color: var(--texto); }
+.ticker-var { font-size: 12.5px; font-weight: bold; }
+.ticker-var.sube { color: var(--verde); }
+.ticker-var.baja { color: var(--rojo); }
+.ticker-fuente { margin-left: auto; font-size: 11.5px; color: var(--texto-tenue); }
+.ticker-fuente.demo { color: var(--amarillo); }
+
 /* ---- Paneles ---- */
 .panel {
   border: 1px solid var(--borde);
