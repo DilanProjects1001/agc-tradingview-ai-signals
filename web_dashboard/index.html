@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AGC AI Signals — Panel de señales</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Encabezado -->
+  <header class="encabezado">
+    <h1>AGC AI Signals <span class="punto">●</span></h1>
+    <div class="estado">
+      Estado: <b>EN LÍNEA</b> · Hora: <span id="reloj">--:--:--</span>
+    </div>
+  </header>
+
+  <!-- Panel de señales (tabla con explicacion AI y confianza) -->
+  <section class="panel">
+    <h2>Panel de señales</h2>
+    <div class="contenido">
+      <table class="tabla-senales">
+        <thead>
+          <tr>
+            <th>Señal</th>
+            <th>Par</th>
+            <th>Motivo técnico</th>
+            <th>Explicación AI</th>
+            <th>Confianza</th>
+            <th>Hora</th>
+          </tr>
+        </thead>
+        <tbody id="cuerpo-tabla">
+          <!-- Filas inyectadas desde app.js -->
+          <tr><td colspan="6" class="placeholder-vacio">Cargando señales…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Panel de indicadores (demo) -->
+  <section class="panel" style="margin-top:18px;">
+    <h2>Indicadores</h2>
+    <div class="contenido rejilla-indicadores">
+      <div class="metrica"><span class="nombre">EMA 9 / EMA 21</span><span class="valor verde">Alcista ▲</span></div>
+      <div class="metrica"><span class="nombre">RSI (14)</span><span class="valor amarillo">54.2</span></div>
+      <div class="metrica"><span class="nombre">Divergencia</span><span class="valor rojo">Bajista</span></div>
+      <div class="metrica"><span class="nombre">Tendencia</span><span class="valor verde">Neutral-alza</span></div>
+    </div>
+  </section>
+
+  <!-- Aviso legal siempre visible -->
+  <div class="disclaimer">
+    <b>Aviso:</b> Este panel es solo con fines educativos y de portafolio.
+    No constituye consejo financiero ni ejecuta operaciones reales. Las señales
+    y explicaciones de IA mostradas son de ejemplo.
+  </div>
+
+  <p class="pie">tradingview-ai-signals · Panel con explicación AI (iteración 1)</p>
+
+  <script src="app.js"></script>
+</body>
+</html>

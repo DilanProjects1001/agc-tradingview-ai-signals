@@ -1,0 +1,8 @@
+# Dependencias
+node_modules/
+
+# Perfil aislado del navegador para capturas (no versionar)
+_edge_profile/
+
+# Variables de entorno con secretos
+.env

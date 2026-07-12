@@ -1,0 +1,183 @@
+//@version=5
+// ============================================================================
+//  AGC AI Signals  —  Indicador de señales de trading (educativo)
+// ============================================================================
+//  Este indicador es solo con fines educativos y de portafolio. No constituye
+//  consejo financiero ni ejecuta operaciones reales.
+//
+//  Combina tres herramientas clasicas del analisis tecnico:
+//    1) Cruce de medias moviles exponenciales (EMA 9 y EMA 21).
+//    2) RSI estandar (14) con niveles de sobreventa (30) y sobrecompra (70).
+//    3) Deteccion de divergencias entre el RSI y el precio.
+//
+//  A partir de ellas emite señales ALCISTAS y BAJISTAS en el grafico.
+//  Opcionalmente puede funcionar como estrategia (backtest) activando el
+//  parametro "Modo estrategia".
+// ============================================================================
+
+// Usamos "indicator" por defecto (overlay=true dibuja sobre el precio).
+// NOTA: Pine Script no permite tener "indicator()" y "strategy()" activos a la
+//       vez en el mismo archivo. Para el modo estrategia, ver instrucciones en
+//       el README (basta con comentar la linea indicator y descomentar strategy).
+indicator(title="AGC AI Signals", shorttitle="AGC AI", overlay=true, max_labels_count=500)
+
+// ----------------------------------------------------------------------------
+//  ENTRADAS CONFIGURABLES (aparecen en el menu de ajustes del indicador)
+// ----------------------------------------------------------------------------
+// --- Grupo: Medias moviles ---
+grupoEma      = "Medias moviles (EMA)"
+longitudEmaRapida = input.int(9,  "EMA rapida",  minval=1, group=grupoEma, tooltip="Media movil corta. Reacciona rapido al precio.")
+longitudEmaLenta  = input.int(21, "EMA lenta",   minval=1, group=grupoEma, tooltip="Media movil larga. Marca la tendencia de fondo.")
+
+// --- Grupo: RSI ---
+grupoRsi      = "RSI (Fuerza relativa)"
+longitudRsi   = input.int(14, "Periodo RSI",     minval=1,  group=grupoRsi)
+nivelSobreventa   = input.int(30, "Nivel sobreventa",  minval=1, maxval=50, group=grupoRsi, tooltip="Por debajo de este valor el activo se considera 'barato'.")
+nivelSobrecompra  = input.int(70, "Nivel sobrecompra", minval=50, maxval=99, group=grupoRsi, tooltip="Por encima de este valor el activo se considera 'caro'.")
+
+// --- Grupo: Divergencias ---
+grupoDiv      = "Divergencias RSI-Precio"
+detectarDivergencias = input.bool(true, "Detectar divergencias", group=grupoDiv)
+pivoteIzq     = input.int(5, "Barras a la izquierda del pivote",  minval=1, group=grupoDiv, tooltip="Cuantas barras se miran a la izquierda para confirmar un maximo/minimo.")
+pivoteDer     = input.int(5, "Barras a la derecha del pivote",    minval=1, group=grupoDiv, tooltip="Cuantas barras se miran a la derecha para confirmar un maximo/minimo.")
+rangoMaxDiv   = input.int(60, "Rango maximo entre pivotes (barras)", minval=5, group=grupoDiv)
+
+// --- Grupo: Visual ---
+grupoVis      = "Apariencia"
+mostrarEmas   = input.bool(true, "Mostrar EMAs", group=grupoVis)
+
+// ----------------------------------------------------------------------------
+//  CALCULOS PRINCIPALES
+// ----------------------------------------------------------------------------
+// 1) Medias moviles exponenciales sobre el precio de cierre.
+emaRapida = ta.ema(close, longitudEmaRapida)
+emaLenta  = ta.ema(close, longitudEmaLenta)
+
+// 2) RSI: oscilador de fuerza relativa (0 a 100).
+rsi = ta.rsi(close, longitudRsi)
+
+// ----------------------------------------------------------------------------
+//  1) SEÑALES POR CRUCE DE MEDIAS MOVILES
+// ----------------------------------------------------------------------------
+// Cruce alcista: la EMA rapida cruza HACIA ARRIBA a la EMA lenta.
+cruceAlcista = ta.crossover(emaRapida, emaLenta)
+// Cruce bajista: la EMA rapida cruza HACIA ABAJO a la EMA lenta.
+cruceBajista = ta.crossunder(emaRapida, emaLenta)
+
+// ----------------------------------------------------------------------------
+//  2) SEÑALES POR RSI (sobreventa / sobrecompra)
+// ----------------------------------------------------------------------------
+// El RSI sale de la zona de sobreventa cruzando el nivel 30 hacia arriba
+// (posible rebote alcista).
+rsiSalidaSobreventa  = ta.crossover(rsi, nivelSobreventa)
+// El RSI sale de la zona de sobrecompra cruzando el nivel 70 hacia abajo
+// (posible correccion bajista).
+rsiSalidaSobrecompra = ta.crossunder(rsi, nivelSobrecompra)
+
+// ----------------------------------------------------------------------------
+//  3) DETECCION DE DIVERGENCIAS RSI - PRECIO
+// ----------------------------------------------------------------------------
+//  Divergencia ALCISTA (regular): el precio hace un minimo mas BAJO, pero el
+//  RSI hace un minimo mas ALTO. Suele anticipar un giro al alza.
+//
+//  Divergencia BAJISTA (regular): el precio hace un maximo mas ALTO, pero el
+//  RSI hace un maximo mas BAJO. Suele anticipar un giro a la baja.
+//
+//  Para encontrar los "minimos" y "maximos" usamos pivotes: puntos que son
+//  mas altos/bajos que las 'pivoteIzq' barras a su izquierda y 'pivoteDer' a
+//  su derecha. Por eso las divergencias se confirman con 'pivoteDer' barras
+//  de retraso (es normal y esperado).
+
+// Detectamos pivotes del RSI (usamos el RSI como fuente de los pivotes).
+pivoteBajoRsi = ta.pivotlow(rsi, pivoteIzq, pivoteDer)   // minimo local del RSI
+pivoteAltoRsi = ta.pivothigh(rsi, pivoteIzq, pivoteDer)  // maximo local del RSI
+
+// Variables que "recuerdan" el valor del pivote anterior y hace cuantas barras
+// ocurrio, para poder comparar el pivote nuevo con el previo.
+var float rsiUltimoBajo   = na
+var int   barraUltimoBajo = na
+var float rsiUltimoAlto   = na
+var int   barraUltimoAlto = na
+
+divergenciaAlcista = false
+divergenciaBajista = false
+
+if detectarDivergencias
+    // --- Divergencia ALCISTA (comparamos minimos) ---
+    if not na(pivoteBajoRsi)
+        // El pivote real ocurrio 'pivoteDer' barras atras.
+        precioEnPivote = low[pivoteDer]
+        // ¿Hay un minimo previo con el que comparar y esta dentro del rango?
+        if not na(rsiUltimoBajo) and (bar_index - barraUltimoBajo) <= rangoMaxDiv
+            // Precio hace minimo mas bajo Y RSI hace minimo mas alto => divergencia alcista.
+            if precioEnPivote < low[pivoteDer + (bar_index - barraUltimoBajo)] and pivoteBajoRsi > rsiUltimoBajo
+                divergenciaAlcista := true
+        // Guardamos este pivote como el "ultimo" para la proxima comparacion.
+        rsiUltimoBajo   := pivoteBajoRsi
+        barraUltimoBajo := bar_index - pivoteDer
+
+    // --- Divergencia BAJISTA (comparamos maximos) ---
+    if not na(pivoteAltoRsi)
+        precioEnPivote = high[pivoteDer]
+        if not na(rsiUltimoAlto) and (bar_index - barraUltimoAlto) <= rangoMaxDiv
+            // Precio hace maximo mas alto Y RSI hace maximo mas bajo => divergencia bajista.
+            if precioEnPivote > high[pivoteDer + (bar_index - barraUltimoAlto)] and pivoteAltoRsi < rsiUltimoAlto
+                divergenciaBajista := true
+        rsiUltimoAlto   := pivoteAltoRsi
+        barraUltimoAlto := bar_index - pivoteDer
+
+// ----------------------------------------------------------------------------
+//  SEÑALES COMBINADAS
+// ----------------------------------------------------------------------------
+// Señal ALCISTA: cualquiera de las tres condiciones alcistas.
+señalAlcista = cruceAlcista or rsiSalidaSobreventa or divergenciaAlcista
+// Señal BAJISTA: cualquiera de las tres condiciones bajistas.
+señalBajista = cruceBajista or rsiSalidaSobrecompra or divergenciaBajista
+
+// ----------------------------------------------------------------------------
+//  DIBUJO EN EL GRAFICO
+// ----------------------------------------------------------------------------
+// EMAs (opcional).
+plot(mostrarEmas ? emaRapida : na, "EMA rapida", color=color.new(color.aqua, 0),  linewidth=2)
+plot(mostrarEmas ? emaLenta  : na, "EMA lenta",  color=color.new(color.orange, 0), linewidth=2)
+
+// Marcas de cruces de EMA (triangulos).
+plotshape(cruceAlcista, title="Cruce EMA alcista", style=shape.triangleup,   location=location.belowbar, color=color.new(color.green, 0), size=size.tiny)
+plotshape(cruceBajista, title="Cruce EMA bajista", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0),   size=size.tiny)
+
+// Etiquetas de divergencia.
+if divergenciaAlcista
+    label.new(bar_index[pivoteDer], low[pivoteDer], "Div. alcista", style=label.style_label_up,   color=color.new(color.green, 20), textcolor=color.white, size=size.small)
+if divergenciaBajista
+    label.new(bar_index[pivoteDer], high[pivoteDer], "Div. bajista", style=label.style_label_down, color=color.new(color.red, 20),   textcolor=color.white, size=size.small)
+
+// Marca resumen: señal alcista o bajista combinada (circulos grandes).
+plotshape(señalAlcista, title="SEÑAL ALCISTA", style=shape.circle, location=location.belowbar, color=color.new(color.lime, 0), size=size.small)
+plotshape(señalBajista, title="SEÑAL BAJISTA", style=shape.circle, location=location.abovebar, color=color.new(color.fuchsia, 0), size=size.small)
+
+// Fondo tenue segun zona de RSI (verde=sobreventa, rojo=sobrecompra).
+bgcolor(rsi < nivelSobreventa  ? color.new(color.green, 90) : na, title="Fondo sobreventa")
+bgcolor(rsi > nivelSobrecompra ? color.new(color.red, 90)   : na, title="Fondo sobrecompra")
+
+// ----------------------------------------------------------------------------
+//  ALERTAS  (para configurar avisos en TradingView sin ejecutar operaciones)
+// ----------------------------------------------------------------------------
+alertcondition(señalAlcista, title="AGC - Señal ALCISTA", message="AGC AI Signals: señal ALCISTA detectada en {{ticker}} ({{interval}}).")
+alertcondition(señalBajista, title="AGC - Señal BAJISTA", message="AGC AI Signals: señal BAJISTA detectada en {{ticker}} ({{interval}}).")
+
+// ============================================================================
+//  MODO ESTRATEGIA (OPCIONAL) — desactivado por defecto
+// ----------------------------------------------------------------------------
+//  Para convertir este script en una ESTRATEGIA con backtest:
+//    1) Comenta la linea "indicator(...)" de arriba.
+//    2) Descomenta el bloque siguiente (quita las // de cada linea).
+//
+//  strategy(title="AGC AI Signals (Estrategia)", overlay=true, initial_capital=1000, default_qty_type=strategy.percent_of_equity, default_qty_value=10)
+//  if señalAlcista
+//      strategy.entry("Largo", strategy.long)
+//  if señalBajista
+//      strategy.entry("Corto", strategy.short)
+//
+//  RECORDATORIO: el backtest es una simulacion historica con fines educativos.
+//  No garantiza resultados futuros ni ejecuta operaciones reales.
+// ============================================================================
