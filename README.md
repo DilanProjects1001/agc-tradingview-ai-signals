@@ -22,8 +22,12 @@ explicación por IA, ticker de precios en vivo y avisos por Telegram.
 - **`web_dashboard/`** — Panel web autocontenido (HTML + CSS + JS locales, sin
   CDNs) con tema oscuro tipo terminal: ticker de precios (Binance), tabla de
   señales con explicación por IA y nivel de confianza.
-- **`functions/`** — Cloudflare Pages Functions: `/api/signal` (explicación de
-  señales con OpenAI o mock) y `/api/telegram` (envío de avisos).
+- **`functions/api/`** — Cloudflare Pages Functions (raíz del proyecto, se
+  despliegan con el sitio): `/api/signal` (explica la señal con OpenAI si hay
+  `OPENAI_API_KEY`, o mock; siempre con disclaimer y score de confianza 0-100) y
+  `/api/telegram` (envía avisos con `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`, o
+  simula el envío). Config en `wrangler.toml`. Endpoints en vivo:
+  [/api/signal](https://agc-tradingview-ai-signals.pages.dev/api/signal?symbol=BTCUSDT&signal_type=alcista&rsi=28).
 - **`ui_shots/`** — Capturas de la interfaz (evidencia visual del progreso).
 - **`check.js`** — Autotest sin navegador (`node check.js`).
 
